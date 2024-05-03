@@ -12,3 +12,15 @@ rust_decimal_macros = "*"
 kdam = "*"
 indoc = "*"
 chrono = "*"
+
+[lib]
+name = "sim"
+path = "src/sim/lib.rs"
+
+[[bin]]
+name = "thieving-cli"
+path = "src/bin/thieving-cli.rs"
+
+[[bin]]
+name = "fighting-cli"
+path = "src/bin/fighting-cli.rs"

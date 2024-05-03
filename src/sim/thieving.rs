@@ -4,12 +4,11 @@ use indoc::indoc;
 use rust_decimal_macros::dec;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use kdam::tqdm;
-use chrono::Duration;
+use super::format_duration_as_hms;
 
 // Определение структур, аналогичных NamedTuple в Python
 #[derive(Debug)]
-struct ThievingSimResult {
+pub struct ThievingSimResult {
     time: i32,
     money_earned: i32,
     success_thieving_count: i32,
@@ -18,7 +17,7 @@ struct ThievingSimResult {
 }
 
 #[derive(Debug)]
-struct ThievingSimConfig {
+pub struct ThievingSimConfig {
     health_regeneration_interval: Decimal, // in seconds
     health_regeneration_amount: i32,
     max_health: i32,
@@ -30,7 +29,24 @@ struct ThievingSimConfig {
     max_gold: i32,
 }
 
-fn sim(config: &ThievingSimConfig) -> ThievingSimResult {
+impl ThievingSimConfig {
+    pub fn new(
+        health_regeneration_interval: Decimal, health_regeneration_amount: i32, max_health: i32, steal_interval: Decimal, steal_success_chance: f32, min_damage: i32, max_damage: i32, min_gold: i32, max_gold: i32) -> Self {
+        Self {
+            health_regeneration_interval,
+            health_regeneration_amount,
+            max_health,
+            steal_interval,
+            steal_success_chance,
+            min_damage,
+            max_damage,
+            min_gold,
+            max_gold,
+        }
+    }
+}
+
+pub fn sim(config: &ThievingSimConfig) -> ThievingSimResult {
     let mut rng = rand::thread_rng();
     let mut current_health = config.max_health;
     let mut gold_earn = 0;
@@ -82,7 +98,7 @@ fn sim(config: &ThievingSimConfig) -> ThievingSimResult {
 }
 
 
-fn format_thieve_results(results: &[ThievingSimResult]) -> String {
+pub fn format_thieve_results(results: &[ThievingSimResult]) -> String {
     let mut mean_time = 0.0;
     let mut mean_money_earned = 0.0;
     let mut success_thieving_count_sum = 0;
@@ -108,10 +124,10 @@ fn format_thieve_results(results: &[ThievingSimResult]) -> String {
 
     sorted_seconds.sort();
     sorted_money_earned.sort();
-    
+
     let min_mean_time = sorted_seconds.iter().take(500).sum::<i32>() as f64 / 500.0;
     let min_money_earned = sorted_money_earned.iter().take(500).sum::<i32>() as f64 / 500.0;
-    
+
     let max_mean_time = sorted_seconds.iter().rev().take(500).sum::<i32>() as f64 / 500.0;
     let max_money_earned = sorted_money_earned.iter().rev().take(500).sum::<i32>() as f64 / 500.0;
 
@@ -139,42 +155,4 @@ fn format_thieve_results(results: &[ThievingSimResult]) -> String {
         failed_thieving_count_sum as f64 / results.len() as f64,
         thieving_count_sum as f64 / results.len() as f64,
     )
-}
-
-
-fn format_duration_as_hms(input_seconds: f64) -> String {
-    let seconds = match input_seconds.to_i64() {
-        Some(value) => value,
-        None => panic!("Failed to convert Decimal to u64"),
-    };
-
-    let duration = Duration::seconds(seconds);
-    format!(
-        "{:02}:{:02}:{:02}",
-        duration.num_hours(),
-        duration.num_minutes() % 60,
-        duration.num_seconds() % 60
-    )
-}
-
-
-fn main() {
-    let config = ThievingSimConfig {
-        health_regeneration_interval: dec!(8), // in seconds
-        health_regeneration_amount: 8,
-        max_health: 720,
-        steal_interval: dec!(2.6), // in seconds
-        steal_success_chance: 0.9,
-        min_damage: 0,
-        max_damage: 157,
-        min_gold: 51,
-        max_gold: 1212,
-    };
-
-    let mut sims: Vec<ThievingSimResult> = Vec::new();
-    for _ in tqdm!(0..5000) {
-        sims.push(sim(&config));
-    }
-
-    println!("\n{}\n", format_thieve_results(&sims));
 }
