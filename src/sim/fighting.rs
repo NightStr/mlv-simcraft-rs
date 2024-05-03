@@ -73,7 +73,7 @@ pub fn sim(config: &FightingSimConfig) -> FightingSimResult {
     let mut player_current_health = config.player_health;
     let mut time = dec!(0);
     let mut enemy_killed = 0;
-    let regen_timer = dec!(0);
+    let mut regen_timer = dec!(0);
     let mut enemy_current_health = config.enemy_health;
     let max_time = Decimal::from(60 * 60 * 8);
 
@@ -102,7 +102,7 @@ pub fn sim(config: &FightingSimConfig) -> FightingSimResult {
         }
 
         // Health regeneration for the player
-        let mut regen_timer = regen_timer + config.player_attack_interval;
+        regen_timer = regen_timer + config.player_attack_interval;
         while regen_timer >= config.player_regen_interval {
             player_current_health += config.player_health_regen;
             regen_timer -= config.player_regen_interval;
