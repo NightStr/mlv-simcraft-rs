@@ -12,6 +12,7 @@ rust_decimal_macros = "*"
 kdam = "*"
 indoc = "*"
 chrono = "*"
+statistical = "*"
 
 [lib]
 name = "sim"
