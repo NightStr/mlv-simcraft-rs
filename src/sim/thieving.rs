@@ -7,7 +7,7 @@ use rust_decimal::prelude::ToPrimitive;
 use super::format_duration_as_hms;
 
 // Определение структур, аналогичных NamedTuple в Python
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ThievingSimResult {
     time: i32,
     money_earned: i32,
@@ -16,17 +16,17 @@ pub struct ThievingSimResult {
     thieving_count: i32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct ThievingSimConfig {
-    health_regeneration_interval: Decimal, // in seconds
-    health_regeneration_amount: i32,
-    max_health: i32,
-    steal_interval: Decimal, // in seconds
-    steal_success_chance: f32,
-    min_damage: i32,
-    max_damage: i32,
-    min_gold: i32,
-    max_gold: i32,
+    pub health_regeneration_interval: Decimal, // in seconds
+    pub health_regeneration_amount: i32,
+    pub max_health: i32,
+    pub steal_interval: Decimal, // in seconds
+    pub steal_success_chance: f32,
+    pub min_damage: i32,
+    pub max_damage: i32,
+    pub min_gold: i32,
+    pub max_gold: i32,
 }
 
 impl ThievingSimConfig {
@@ -108,6 +108,10 @@ pub fn format_thieve_results(results: &[ThievingSimResult]) -> String {
     let mut sorted_seconds = Vec::new();
     let mut sorted_money_earned = Vec::new();
 
+    let mut success_thieving: f64 = 0.0;
+    let mut failed_thieving: f64 = 0.0;
+    let mut thieving_count: f64 = 0.0;
+
     for result in results {
         mean_time += result.time as f64;
         mean_money_earned += result.money_earned as f64;
@@ -119,8 +123,13 @@ pub fn format_thieve_results(results: &[ThievingSimResult]) -> String {
         sorted_money_earned.push(result.money_earned);
     }
 
-    mean_time /= results.len() as f64;
-    mean_money_earned /= results.len() as f64;
+    if results.len() > 0 {
+        mean_time /= results.len() as f64;
+        mean_money_earned /= results.len() as f64;
+        success_thieving = success_thieving_count_sum as f64 / results.len() as f64;
+        failed_thieving = failed_thieving_count_sum as f64 / results.len() as f64;
+        thieving_count = thieving_count_sum as f64 / results.len() as f64;
+    }
 
     sorted_seconds.sort();
     sorted_money_earned.sort();
@@ -151,8 +160,8 @@ pub fn format_thieve_results(results: &[ThievingSimResult]) -> String {
         mean_money_earned,
         max_money_earned,
         min_money_earned,
-        success_thieving_count_sum as f64 / results.len() as f64,
-        failed_thieving_count_sum as f64 / results.len() as f64,
-        thieving_count_sum as f64 / results.len() as f64,
+        success_thieving,
+        failed_thieving,
+        thieving_count,
     )
 }
