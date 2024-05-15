@@ -187,26 +187,21 @@ impl ThievingGuiState {
                 );
                 let mut is_started = self.is_started.write().unwrap();
                 *is_started = true;
+                let config = self.config_stat.config;
                 return iced::Command::batch((0..self.config_stat.sims_count).map(|id| {
                     let is_started_clone = self.is_started.clone();
-                    let config = self.config_stat.config.clone();
                     iced::Command::perform(
                         async move {
-                            let is_started: bool;
-                            {
-                                if let Ok(is_started_ref) = is_started_clone.read() {
-                                        is_started = *is_started_ref;
-                                } else {
-                                    println!("Error reading is_started");
-                                    is_started = false;
-                                }
-                            }
-                            if is_started == false {
-                                println!("Simulation stopped");
-                                None
-                            } else {
+                            let is_started= match is_started_clone.read() {
+                                Ok(is_started_ref) => *is_started_ref,
+                                Err(_) => false,
+                            };
+                            if is_started == true {
                                 println!("Start sim: {}", id);
                                 Some(thieving::sim(&config))
+                            } else {
+                                println!("Simulation stopped");
+                                None
                             }
                         },
                         |r| Message::SimComplete(r)
