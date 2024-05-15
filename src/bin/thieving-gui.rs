@@ -1,13 +1,24 @@
+use std::env;
+use std::path::PathBuf;
 use iced::widget::{column, row, text, text_input, Column, text_editor, Space, progress_bar, button};
 use iced::settings::Settings;
 use sim::thieving;
 use sim::thieving::{ThievingSimConfig, ThievingSimResult};
 use iced::{Size, Length, Theme};
 use std::sync::{Arc, RwLock};
+use native_dialog::FileDialog;
+use serde::{Deserialize, Serialize};
 use rust_decimal_macros::dec;
 
 
+const DEFAULT_SAVE_DIR: &str = "saves";
+const SAVE_FILE_EXTENSION: &str = "thsave";
+const DEFAULT_SAVE_FILE_NAME: &str = "./saves/last_session.thsave";
+
 pub fn main() -> iced::Result {
+    if !std::path::Path::new(DEFAULT_SAVE_DIR).exists() {
+        std::fs::create_dir(DEFAULT_SAVE_DIR).unwrap();
+    }
     let size = Size::new(600.0, 500.0);
     let app = iced::program("Thieving simulation", ThievingGuiState::update, ThievingGuiState::view)
     .settings(Settings {
@@ -39,10 +50,14 @@ enum Message {
     MinGold(String),
     MaxGold(String),
     SimsCount(String),
+    SaveConfig(Option<PathBuf>),
+    LoadConfig(Option<PathBuf>),
+    OpenSaveConfigDialog,
+    OpenLoadConfigDialog,
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ThievingConfigState {
     sims_count: u16,
     steal_success_chance: i32,
@@ -51,26 +66,44 @@ struct ThievingConfigState {
 
 impl Default for ThievingConfigState {
     fn default() -> Self {
-        Self {
-            sims_count: 5000,
-            steal_success_chance: 90,
-            config: ThievingSimConfig::new(
-                dec!(8), // in seconds
-                8,
-                720,
-                dec!(2.6), // in seconds
-                0.9,
-                0,
-                157,
-                51,
-                1212,
-            ),
+        match ThievingConfigState::load_from_file(&DEFAULT_SAVE_FILE_NAME.into()) {
+            Ok(config) => {
+                return config;
+            }
+            Err(_) => {
+                Self {
+                    sims_count: 5000,
+                    steal_success_chance: 90,
+                    config: ThievingSimConfig::new(
+                        dec!(8), // in seconds
+                        8,
+                        720,
+                        dec!(2.6), // in seconds
+                        0.9,
+                        0,
+                        157,
+                        51,
+                        1212,
+                    ),
+                }
+            }
         }
     }
 }
 
 
 impl ThievingConfigState {
+    fn save_to_file(&self, path: &PathBuf) {
+        let json = serde_json::to_string(&self).unwrap();
+        let _ = std::fs::write(path, json);
+    }
+
+    fn load_from_file(path: &PathBuf) -> Result<Self, std::io::Error> {
+        let json = std::fs::read(path)?;
+        let config: ThievingConfigState = serde_json::from_slice(&json)?;
+        Ok(config)
+    }
+
     fn clean_message(&self, message: String, allow_dots: bool) -> String {
         let filter = if allow_dots {
             |c: &char| c.is_digit(10) || *c == '.'
@@ -156,6 +189,13 @@ struct ThievingGuiState {
     theme: Theme,
 }
 
+
+impl Drop for ThievingGuiState {
+    fn drop(&mut self) {
+        self.config_stat.save_to_file(&DEFAULT_SAVE_FILE_NAME.into());
+    }
+}
+
 impl Default for ThievingGuiState {
     fn default() -> Self {
         let sims: Vec<ThievingSimResult> = Vec::new();
@@ -188,7 +228,7 @@ impl ThievingGuiState {
                 let mut is_started = self.is_started.write().unwrap();
                 *is_started = true;
                 let config = self.config_stat.config;
-                return iced::Command::batch((0..self.config_stat.sims_count).map(|id| {
+                iced::Command::batch((0..self.config_stat.sims_count).map(|id| {
                     let is_started_clone = self.is_started.clone();
                     iced::Command::perform(
                         async move {
@@ -212,6 +252,7 @@ impl ThievingGuiState {
                 let mut is_started = self.is_started.write().unwrap();
                 *is_started = false;
                 self.progress = 0.0;
+                iced::Command::none()
             }
             Message::SimComplete(sim) => {
                 if let Some(r) = sim {
@@ -232,13 +273,55 @@ impl ThievingGuiState {
                     let mut is_started = self.is_started.write().unwrap();
                     *is_started = false;
                 }
+                iced::Command::none()
+            }
+
+            Message::SaveConfig(path) => {
+                if let Some(path) = path {
+                    let mut save_path = PathBuf::from(path);
+                    save_path.set_extension(SAVE_FILE_EXTENSION);
+                    self.config_stat.save_to_file(&save_path);
+                }
+                iced::Command::none()
+            }
+            Message::LoadConfig(path) => {
+                if let Some(path) = path {
+                    match ThievingConfigState::load_from_file(path) {
+                        Ok(config) => {
+                            self.config_stat = config;
+                        }
+                        Err(_) => {}
+                    }
+                }
+                iced::Command::none()
+            }
+            Message::OpenSaveConfigDialog => {
+                iced::Command::perform(async {
+                    let current_dir = env::current_dir().unwrap();
+                    FileDialog::new()
+                        .set_location(&current_dir.join(DEFAULT_SAVE_DIR))
+                        .set_filename("thieveing_save")
+                        .show_save_single_file().unwrap()
+                },
+                |path| Message::SaveConfig(path)
+                )
+            }
+            Message::OpenLoadConfigDialog => {
+                iced::Command::perform(async {
+                    FileDialog::new()
+                        .set_location(DEFAULT_SAVE_DIR)
+                        .add_filter("saves", &[SAVE_FILE_EXTENSION])
+                        .show_open_single_file().unwrap()
+                },
+                |path| Message::LoadConfig(path)
+                )
             }
             _ => {
                 self.config_stat.update(message);
                 println!("{:?}", &self.config_stat.config);
+                iced::Command::none()
             }
         }
-        iced::Command::none()
     }
 
     fn view(&self) -> Column<Message> {
@@ -252,7 +335,13 @@ impl ThievingGuiState {
             Space::with_height(Length::Fixed(10.0)),
             progress_bar(0.0..=self.config_stat.sims_count as f32, self.progress as f32).width(Length::Fill), // Updated arguments
             Space::with_height(Length::Fill),
-            if *is_started {button("Stop simulation").on_press(Message::StopSim)} else {button("Start simulation").on_press(Message::StartSim)},
+            row![
+                 if *is_started {button("Stop simulation").on_press(Message::StopSim)} else {button("Start simulation").on_press(Message::StartSim)},
+                 Space::with_width(Length::Fill),
+                 button("Save").on_press(Message::OpenSaveConfigDialog),
+                 Space::with_width(Length::Fixed(5.0)),
+                 button("Load").on_press(Message::OpenLoadConfigDialog),
+             ],
         ].padding(15)
     }
 }

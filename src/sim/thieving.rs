@@ -4,6 +4,7 @@ use indoc::indoc;
 use rust_decimal_macros::dec;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
+use serde::{Deserialize, Serialize};
 use super::format_duration_as_hms;
 
 // Определение структур, аналогичных NamedTuple в Python
@@ -16,7 +17,7 @@ pub struct ThievingSimResult {
     thieving_count: i32,
 }
 
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
 pub struct ThievingSimConfig {
     pub health_regeneration_interval: Decimal, // in seconds
     pub health_regeneration_amount: i32,
