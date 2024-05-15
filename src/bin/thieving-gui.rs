@@ -1,15 +1,10 @@
-use iced::widget::button;
-use iced::widget::progress_bar;
-use iced::widget::Space;
-use iced::widget::{column, row, text, text_input, Column, text_editor};
+use iced::widget::{column, row, text, text_input, Column, text_editor, Space, progress_bar, button};
 use iced::settings::Settings;
 use sim::thieving;
 use sim::thieving::{ThievingSimConfig, ThievingSimResult};
-use iced::{Size, Length};
+use iced::{Size, Length, Theme};
 use std::sync::{Arc, RwLock};
 use rust_decimal_macros::dec;
-use tokio;
-use tokio::task;
 
 
 pub fn main() -> iced::Result {
@@ -24,7 +19,7 @@ pub fn main() -> iced::Result {
         default_font: iced::font::Font::with_name("SansSerif"),
         ..Settings::default()
     });
-    app.run()
+    app.theme(ThievingGuiState::theme).run()
 }
 
 
@@ -32,7 +27,7 @@ pub fn main() -> iced::Result {
 #[derive(Debug, Clone)]
 enum Message {
     StartSim,
-    SimComplete(Vec<ThievingSimResult>),
+    SimComplete(Option<ThievingSimResult>),
     StopSim,
     HealthRegenerationInterval(String),
     HealthRegenerationAmount(String),
@@ -155,8 +150,10 @@ impl ThievingConfigState {
 struct ThievingGuiState {
     sim_result: text_editor::Content,
     sims: Vec<ThievingSimResult>,
+    progress: f32,
     config_stat: ThievingConfigState,
     is_started: Arc<RwLock<bool>>,
+    theme: Theme,
 }
 
 impl Default for ThievingGuiState {
@@ -168,61 +165,75 @@ impl Default for ThievingGuiState {
                 &thieving::format_thieve_results(&sims)
             ),
             sims,
+            progress: 0.0,
             config_stat,
             is_started: Arc::new(RwLock::new(false)),
+            theme: Theme::default(),
         }
     }
 }
 
 impl ThievingGuiState {
+    fn theme(&self) -> Theme {
+        self.theme.clone()
+    }
+
     fn update(&mut self, message: Message) -> iced::Command<Message> {
         match &message {
             Message::StartSim => {
                 self.sims.clear();
+                self.sim_result = text_editor::Content::with_text(
+                    &thieving::format_thieve_results(&self.sims)
+                );
                 let mut is_started = self.is_started.write().unwrap();
                 *is_started = true;
-                let chunk_size = if self.config_stat.sims_count > 100 {
-                    100
-                } else {
-                    1
-                };
-                return iced::Command::batch((0..self.config_stat.sims_count / chunk_size).map(|chunk| {
+                return iced::Command::batch((0..self.config_stat.sims_count).map(|id| {
                     let is_started_clone = self.is_started.clone();
                     let config = self.config_stat.config.clone();
                     iced::Command::perform(
-                        task::spawn(async move {
-                            let mut sim_results = Vec::new();
-                            for i in 0..chunk_size {
-                                let is_started: bool;
-                                {
-                                    is_started = *is_started_clone.read().unwrap();
-                                }
-                                if is_started == false {
-                                    println!("Simulation stopped");
-                                    break
+                        async move {
+                            let is_started: bool;
+                            {
+                                if let Ok(is_started_ref) = is_started_clone.read() {
+                                        is_started = *is_started_ref;
                                 } else {
-                                    println!("Start sim: {}", i + chunk * chunk_size);
-                                    sim_results.push(thieving::sim(&config));
+                                    println!("Error reading is_started");
+                                    is_started = false;
                                 }
                             }
-                            sim_results
-                        }),
-                        |r| Message::SimComplete(r.unwrap())
+                            if is_started == false {
+                                println!("Simulation stopped");
+                                None
+                            } else {
+                                println!("Start sim: {}", id);
+                                Some(thieving::sim(&config))
+                            }
+                        },
+                        |r| Message::SimComplete(r)
                     )
                 }).collect::<Vec<_>>())
             }
             Message::StopSim => {
                 let mut is_started = self.is_started.write().unwrap();
                 *is_started = false;
+                self.progress = 0.0;
             }
             Message::SimComplete(sim) => {
-                for r in sim {
+                if let Some(r) = sim {
                     self.sims.push(*r);
                 }
-                self.sim_result = text_editor::Content::with_text(
-                    &thieving::format_thieve_results(&self.sims)
-                );
+                if *self.is_started.read().unwrap() == true {
+                    self.progress = self.sims.len() as f32;
+                }
+                if self.sims.len() as u16 % (self.config_stat.sims_count / 10) == 0 {
+                    self.sim_result = text_editor::Content::with_text(
+                        &thieving::format_thieve_results(&self.sims)
+                    );
+                }
                 if self.sims.len() == self.config_stat.sims_count as usize {
+                    self.sim_result = text_editor::Content::with_text(
+                        &thieving::format_thieve_results(&self.sims)
+                    );
                     let mut is_started = self.is_started.write().unwrap();
                     *is_started = false;
                 }
@@ -244,7 +255,7 @@ impl ThievingGuiState {
                 .height(Length::Fill)
             ].height(Length::Shrink).spacing(5),
             Space::with_height(Length::Fixed(10.0)),
-            progress_bar(0.0..=self.config_stat.sims_count as f32, self.sims.len() as f32).width(Length::Fill), // Updated arguments
+            progress_bar(0.0..=self.config_stat.sims_count as f32, self.progress as f32).width(Length::Fill), // Updated arguments
             Space::with_height(Length::Fill),
             if *is_started {button("Stop simulation").on_press(Message::StopSim)} else {button("Start simulation").on_press(Message::StartSim)},
         ].padding(15)
